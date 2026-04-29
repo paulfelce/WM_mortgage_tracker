@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mortgage Tracker</title>
+
+<!-- Tailwind via CDN (MIT, open source) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Alpine.js v3 (MIT, open source) -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"></script>
+
+<!-- Editorial display font + clean body sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+    :root {
+        --paper:   #f6f1e8;
+        --paper-2: #ede4d3;
+        --ink:     #1f1d1a;
+        --ink-2:   #4b463d;
+        --accent:  #8a3324;   /* burnt sienna */
+        --accent-2:#d6a847;   /* warm gold */
+        --rule:    #c8bda4;
+        --good:    #2c5d3f;
+        --bad:     #8a3324;
+    }
+    html, body { background: var(--paper); color: var(--ink); }
+    body { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+    h1,h2,h3,.display { font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.01em; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+    /* Subtle paper grain — pure CSS, no external image */
+    body::before {
+        content: '';
+        position: fixed; inset: 0; pointer-events: none; z-index: 0;
+        background-image:
+            radial-gradient(circle at 12% 18%, rgba(138,51,36,.04) 0, transparent 35%),
+            radial-gradient(circle at 88% 82%, rgba(214,168,71,.05) 0, transparent 40%);
+    }
+    /* Underline-as-rule for headings */
+    .rule-under { border-bottom: 1px solid var(--rule); padding-bottom: .35rem; }
+    .rule-thin { border-color: var(--rule) !important; }
+
+    /* Status pills */
+    .pill { display:inline-flex; align-items:center; gap:.35em; padding:.15rem .55rem; border-radius:9999px; font-size:.72rem; font-weight:600; letter-spacing:.02em; text-transform:uppercase; border:1px solid currentColor; }
+    .pill-Written    { color:#7a5a14; background: #f6e7bf66; }
+    .pill-Exchanged  { color:#3a4f7a; background: #d6dff04d; }
+    .pill-Completed  { color:#2c5d3f; background: #cde2d44d; }
+    .pill-Paid       { color:#1f1d1a; background: #d8c89e66; }
+    .pill-N-T-U      { color:#8a3324; background: #efd3cf4d; }
+    .pill-blank      { color:#75705f; background: #00000008; }
+
+    /* Inputs */
+    .ipt { background:#fff; border:1px solid var(--rule); padding:.45rem .65rem; border-radius:6px; font-size:.875rem; width:100%; }
+    .ipt:focus { outline:none; border-color: var(--accent); box-shadow:0 0 0 3px rgba(138,51,36,.12); }
+    .btn { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .9rem; border-radius:6px; font-weight:600; font-size:.875rem; transition:transform .05s ease, background .15s ease; cursor:pointer; }
+    .btn-primary { background: var(--ink); color: var(--paper); }
+    .btn-primary:hover { background:#000; }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-ghost { background: transparent; color: var(--ink); border:1px solid var(--rule); }
+    .btn-ghost:hover { background: var(--paper-2); }
+    .btn-danger { background: var(--accent); color:#fff; }
+
+    /* Cards */
+    .card { background:#fff; border:1px solid var(--rule); border-radius:10px; }
+
+    /* Nav link */
+    .nav-link { color: var(--ink-2); padding:.4rem .8rem; border-radius:6px; }
+    .nav-link.active { background: var(--ink); color: var(--paper); }
+    .nav-link:hover:not(.active) { background: var(--paper-2); }
+
+    /* Table */
+    table.ledger { width:100%; border-collapse:collapse; }
+    table.ledger thead th { text-align:left; font-weight:600; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-2); border-bottom:1px solid var(--rule); padding:.55rem .6rem; background:var(--paper); position:sticky; top:0; }
+    table.ledger tbody td { border-bottom:1px solid var(--rule); padding:.5rem .6rem; vertical-align:middle; font-size:.875rem; }
+    table.ledger tbody tr:hover { background: #fffaef; }
+
+    /* Splits grid */
+    .splits-grid input { background:transparent; border:0; text-align:right; padding:.3rem; font-family:'IBM Plex Mono',monospace; font-size:.85rem; width:100%; }
+    .splits-grid input:focus { outline: 2px solid var(--accent-2); background:#fff; }
+
+    /* Toast */
+    .toast { animation: toastin .25s ease both; }
+    @keyframes toastin { from { transform:translateY(8px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+</style>
+</head>
+
+<body class="min-h-screen relative">
+<div x-data="app()" x-init="init()" class="relative z-10">
+
+<!-- ================================================================
+     LOGIN
+================================================================= -->
+<template x-if="!user">
+    <div class="min-h-screen flex items-center justify-center px-4">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-10">
+                <div class="display text-5xl tracking-tight" style="color:var(--ink)">Tracker</div>
+                <div class="mt-1 text-sm tracking-widest uppercase" style="color:var(--ink-2)">— Mortgage Pipeline —</div>
+            </div>
+            <div class="card p-8">
+                <h2 class="display text-2xl rule-under mb-5">Sign in</h2>
+                <form @submit.prevent="signIn">
+                    <label class="block text-sm mb-1" style="color:var(--ink-2)">Username</label>
+                    <input class="ipt mb-4" x-model="loginForm.username" autocomplete="username" autofocus>
+                    <label class="block text-sm mb-1" style="color:var(--ink-2)">Password</label>
+                    <input class="ipt mb-5" type="password" x-model="loginForm.password" autocomplete="current-password">
+                    <div class="text-sm mb-4" style="color:var(--bad)" x-text="loginError"></div>
+                    <button class="btn btn-primary w-full justify-center" :disabled="loginBusy">
+                        <span x-show="!loginBusy">Sign in</span>
+                        <span x-show="loginBusy">Signing in…</span>
+                    </button>
+                </form>
+                <div class="mt-6 text-xs text-center" style="color:var(--ink-2)">
+                    Demo: <span class="mono">paul / paul123</span> &nbsp;·&nbsp; <span class="mono">ali / ali123</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- ================================================================
+     SIGNED-IN APP
+================================================================= -->
+<template x-if="user">
+<div>
+    <!-- Header / nav -->
+    <header class="border-b rule-thin" style="background:var(--paper); position:sticky; top:0; z-index:20;">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6">
+            <div class="display text-2xl">Tracker</div>
+            <nav class="flex items-center gap-1 flex-wrap">
+                <a class="nav-link" :class="{active: tab==='cases'}"     @click.prevent="tab='cases'"      href="#">Cases</a>
+                <a class="nav-link" :class="{active: tab==='dashboard'}" @click.prevent="tab='dashboard'; loadDashboard()" href="#">Dashboard</a>
+                <a class="nav-link" :class="{active: tab==='earnings'}"  @click.prevent="tab='earnings'; loadEarnings()" href="#">Earnings</a>
+                <a class="nav-link" :class="{active: tab==='splits'}"    @click.prevent="tab='splits'; loadSplits()"   href="#">My splits</a>
+                <a class="nav-link" :class="{active: tab==='account'}"   @click.prevent="tab='account'"   href="#">Account</a>
+                <a class="nav-link" x-show="user.is_admin" :class="{active: tab==='users'}" @click.prevent="tab='users'; loadUsers()" href="#">Users</a>
+            </nav>
+            <div class="ml-auto flex items-center gap-3 text-sm">
+                <span style="color:var(--ink-2)">Signed in as</span>
+                <span class="font-semibold" x-text="user.display_name"></span>
+                <span x-show="user.is_admin" class="mono text-xs px-1.5 py-0.5 rounded" style="background:var(--paper-2)">admin</span>
+                <button class="btn btn-ghost" @click="signOut">Sign out</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+
+        <!-- ========== CASES ========== -->
+        <section x-show="tab==='cases'">
+            <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+                <div>
+                    <h1 class="display text-3xl">Cases</h1>
+                    <div class="text-sm" style="color:var(--ink-2)">Every mortgage case in the book.</div>
+                </div>
+                <button class="btn btn-primary" @click="openNewCase()">+ New case</button>
+            </div>
+
+            <div class="card p-4 mb-5 flex flex-wrap gap-3 items-end">
+                <div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Search client</label>
+                    <input class="ipt mt-1" x-model="filters.search" @input.debounce.250ms="loadCases()" placeholder="e.g. Smith">
+                </div>
+                <div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Year</label>
+                    <input type="number" class="ipt mt-1 w-28" x-model.number="filters.year" @change="loadCases()">
+                </div>
+                <div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Source</label>
+                    <select class="ipt mt-1 w-32" x-model="filters.lead_source" @change="loadCases()">
+                        <option value="">All</option>
+                        <template x-for="ls in lookups.lead_sources" :key="ls.code">
+                            <option :value="ls.code" x-text="ls.code + ' — ' + ls.description"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Status</label>
+                    <select class="ipt mt-1 w-32" x-model="filters.finished" @change="loadCases()">
+                        <option value="">All</option>
+                        <option value="false">Open</option>
+                        <option value="true">Finished</option>
+                    </select>
+                </div>
+                <button class="btn btn-ghost" @click="filters={search:'',year:null,lead_source:'',finished:''}; loadCases()">Clear</button>
+                <div class="ml-auto text-sm" style="color:var(--ink-2)">
+                    <span x-text="cases.length"></span> case<span x-show="cases.length!==1">s</span>
+                </div>
+            </div>
+
+            <div class="card overflow-hidden">
+                <div class="overflow-x-auto" style="max-height:65vh">
+                    <table class="ledger">
+                        <thead>
+                            <tr>
+                                <th>#</th><th>Date written</th><th>Client</th>
+                                <th x-show="user.is_admin">Owner</th>
+                                <th>Product</th>
+                                <th class="text-right">Mortgage £</th><th>Source</th>
+                                <th>Broker</th><th>Proc</th><th>Protection</th>
+                                <th>GI</th><th>Solic.</th><th>Survey</th>
+                                <th>Predicted</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="c in cases" :key="c.case_id">
+                                <tr>
+                                    <td class="mono" style="color:var(--ink-2)" x-text="c.case_id"></td>
+                                    <td x-text="fmtDate(c.date_written)"></td>
+                                    <td class="font-semibold" x-text="c.client"></td>
+                                    <td x-show="user.is_admin" x-text="c.owner_display_name || '—'" style="color:var(--ink-2)"></td>
+                                    <td x-text="c.product || '—'"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(c.mortgage_amount)"></td>
+                                    <td><span class="mono text-xs px-1.5 py-0.5 rounded" style="background:var(--paper-2)" x-text="c.lead_source"></span></td>
+                                    <td><span :class="'pill pill-' + (c.broker_status     || 'blank')" x-text="c.broker_status     || '—'"></span></td>
+                                    <td><span :class="'pill pill-' + (c.proc_status       || 'blank')" x-text="c.proc_status       || '—'"></span></td>
+                                    <td><span :class="'pill pill-' + (c.protection_status || 'blank')" x-text="c.protection_status || '—'"></span></td>
+                                    <td><span :class="'pill pill-' + (c.gi_status         || 'blank')" x-text="c.gi_status         || '—'"></span></td>
+                                    <td><span :class="'pill pill-' + (c.solicitors_status || 'blank')" x-text="c.solicitors_status || '—'"></span></td>
+                                    <td><span :class="'pill pill-' + (c.survey_status     || 'blank')" x-text="c.survey_status     || '—'"></span></td>
+                                    <td x-text="fmtDate(c.predicted_date)"></td>
+                                    <td class="text-right">
+                                        <button class="btn btn-ghost text-xs" @click="openCase(c)">Open</button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="cases.length===0">
+                                <tr><td :colspan="user.is_admin ? 15 : 14" class="text-center py-12" style="color:var(--ink-2)">No cases match those filters.</td></tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== DASHBOARD ========== -->
+        <section x-show="tab==='dashboard'">
+            <div class="flex items-end justify-between mb-6">
+                <div>
+                    <h1 class="display text-3xl">Dashboard</h1>
+                    <div class="text-sm" style="color:var(--ink-2)">All numbers reflect <span class="font-semibold" x-text="user.display_name + '’s'"></span> splits.</div>
+                </div>
+                <div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Year</label>
+                    <input type="number" class="ipt mt-1 w-28" x-model.number="dashYear" @change="loadDashboard()">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+                <div class="card p-5">
+                    <div class="text-xs uppercase tracking-widest" style="color:var(--ink-2)">Year-to-date written</div>
+                    <div class="display text-4xl mt-2" x-text="fmtMoney(dashTotals.written)"></div>
+                </div>
+                <div class="card p-5">
+                    <div class="text-xs uppercase tracking-widest" style="color:var(--ink-2)">Year-to-date completed</div>
+                    <div class="display text-4xl mt-2" x-text="fmtMoney(dashTotals.completed)"></div>
+                </div>
+                <div class="card p-5">
+                    <div class="text-xs uppercase tracking-widest" style="color:var(--ink-2)">Year-to-date paid</div>
+                    <div class="display text-4xl mt-2" x-text="fmtMoney(dashTotals.paid)"></div>
+                </div>
+            </div>
+
+            <div class="card p-5">
+                <h2 class="display text-xl rule-under mb-4">Monthly breakdown</h2>
+                <table class="ledger">
+                    <thead>
+                        <tr><th>Month</th><th class="text-right">Written</th><th class="text-right">Completed</th><th class="text-right">Paid</th></tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="m in dashRows" :key="m.month_num">
+                            <tr>
+                                <td x-text="monthName(m.month_num)"></td>
+                                <td class="text-right mono" x-text="fmtMoney(m.written_total)"></td>
+                                <td class="text-right mono" x-text="fmtMoney(m.completed_total)"></td>
+                                <td class="text-right mono" x-text="fmtMoney(m.paid_total)"></td>
+                            </tr>
+                        </template>
+                        <template x-if="dashRows.length===0">
+                            <tr><td colspan="4" class="text-center py-8" style="color:var(--ink-2)">No data for <span x-text="dashYear"></span>.</td></tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ========== EARNINGS ========== -->
+        <section x-show="tab==='earnings'">
+            <div class="flex items-end justify-between mb-6">
+                <div>
+                    <h1 class="display text-3xl">Earnings</h1>
+                    <div class="text-sm" style="color:var(--ink-2)">Each case's fees multiplied by <span class="font-semibold" x-text="user.display_name + '’s'"></span> splits for the case's month.</div>
+                </div>
+                <div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Year</label>
+                    <input type="number" class="ipt mt-1 w-28" x-model.number="earnYear" @change="loadEarnings()">
+                </div>
+            </div>
+
+            <div class="card overflow-hidden">
+                <div class="overflow-x-auto" style="max-height:70vh">
+                    <table class="ledger">
+                        <thead>
+                            <tr>
+                                <th>#</th><th>Date</th><th>Client</th><th>Source</th>
+                                <th class="text-right">Mtg %</th><th class="text-right">Prot %</th>
+                                <th class="text-right">Broker</th><th class="text-right">Proc</th>
+                                <th class="text-right">Prot</th><th class="text-right">GI</th>
+                                <th class="text-right">Solic.</th><th class="text-right">Survey</th>
+                                <th class="text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="e in earnings" :key="e.case_id">
+                                <tr>
+                                    <td class="mono" style="color:var(--ink-2)" x-text="e.case_id"></td>
+                                    <td x-text="fmtDate(e.date_written)"></td>
+                                    <td class="font-semibold" x-text="e.client"></td>
+                                    <td><span class="mono text-xs px-1.5 py-0.5 rounded" style="background:var(--paper-2)" x-text="e.lead_source"></span></td>
+                                    <td class="text-right mono" x-text="(e.mortgage_pct||0) + '%'"></td>
+                                    <td class="text-right mono" x-text="(e.protection_pct||0) + '%'"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(e.broker_earn)"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(e.proc_earn)"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(e.protection_earn)"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(e.gi_earn)"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(e.solicitors_earn)"></td>
+                                    <td class="text-right mono" x-text="fmtMoney(e.survey_earn)"></td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(e.total_earn)"></td>
+                                </tr>
+                            </template>
+                            <template x-if="earnings.length>0">
+                                <tr style="background:var(--paper-2)">
+                                    <td colspan="6" class="font-semibold">Total</td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(earnTotals.broker)"></td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(earnTotals.proc)"></td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(earnTotals.protection)"></td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(earnTotals.gi)"></td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(earnTotals.solicitors)"></td>
+                                    <td class="text-right mono font-semibold" x-text="fmtMoney(earnTotals.survey)"></td>
+                                    <td class="text-right mono font-bold display" x-text="fmtMoney(earnTotals.total)"></td>
+                                </tr>
+                            </template>
+                            <template x-if="earnings.length===0">
+                                <tr><td colspan="13" class="text-center py-8" style="color:var(--ink-2)">No earnings to show.</td></tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== MY SPLITS ========== -->
+        <section x-show="tab==='splits'">
+            <div class="flex items-end justify-between mb-6">
+                <div>
+                    <h1 class="display text-3xl">My splits</h1>
+                    <div class="text-sm" style="color:var(--ink-2)">Percentages applied when computing your earnings &amp; dashboard. Edit any cell — values save on blur.</div>
+                </div>
+                <div class="flex gap-2 items-end">
+                    <div>
+                        <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Year</label>
+                        <input type="number" class="ipt mt-1 w-28" x-model.number="splitsYear">
+                    </div>
+                    <button class="btn btn-ghost" @click="seedYear()">Add year</button>
+                </div>
+            </div>
+
+            <div class="card overflow-hidden">
+                <table class="ledger splits-grid">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" style="width:8rem">Month</th>
+                            <th colspan="2" class="text-center" style="background:var(--paper-2)">Mortgage</th>
+                            <th colspan="2" class="text-center" style="background:var(--paper-2)">Protection</th>
+                            <th rowspan="2">Note</th>
+                        </tr>
+                        <tr>
+                            <th class="text-right">Self-Gen %</th><th class="text-right">WM %</th>
+                            <th class="text-right">Self-Gen %</th><th class="text-right">WM %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="m in 12" :key="m">
+                            <tr>
+                                <td x-text="monthName(m) + ' ' + splitsYear"></td>
+                                <template x-for="field in ['sg_mortgage_pct','wm_mortgage_pct','sg_protection_pct','wm_protection_pct']" :key="field">
+                                    <td class="text-right">
+                                        <input type="number" min="0" max="100" step="0.01"
+                                               :value="splitFor(m)[field]"
+                                               @blur="saveSplit(m, field, $event.target.value)">
+                                    </td>
+                                </template>
+                                <td>
+                                    <input type="text" class="w-full" :value="splitFor(m).note || ''"
+                                           @blur="saveSplit(m, 'note', $event.target.value)" placeholder="—">
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-3 text-xs" style="color:var(--ink-2)">
+                Mortgage % is applied to broker, proc, GI, solicitors and survey fees; Protection % is applied only to the protection fee — matching the Excel formula in <span class="mono">Earnings!M5/N5</span>.
+            </div>
+        </section>
+
+        <!-- ========== ACCOUNT (everyone) ========== -->
+        <section x-show="tab==='account'" class="max-w-xl">
+            <div class="mb-6">
+                <h1 class="display text-3xl">Account</h1>
+                <div class="text-sm" style="color:var(--ink-2)">Update your password. You'll stay signed in here, but other devices will be signed out.</div>
+            </div>
+
+            <div class="card p-6">
+                <div class="grid grid-cols-1 gap-4">
+                    <div>
+                        <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Username</label>
+                        <div class="mt-1 mono" x-text="user.username"></div>
+                    </div>
+                    <div>
+                        <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Display name</label>
+                        <div class="mt-1" x-text="user.display_name"></div>
+                    </div>
+                    <hr class="rule-thin">
+                    <div>
+                        <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Current password</label>
+                        <input type="password" class="ipt mt-1 w-full" x-model="pwdForm.current" autocomplete="current-password">
+                    </div>
+                    <div>
+                        <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">New password</label>
+                        <input type="password" class="ipt mt-1 w-full" x-model="pwdForm.next" autocomplete="new-password">
+                        <div class="text-xs mt-1" style="color:var(--ink-2)">Minimum 6 characters.</div>
+                    </div>
+                    <div>
+                        <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Confirm new password</label>
+                        <input type="password" class="ipt mt-1 w-full" x-model="pwdForm.confirm" autocomplete="new-password">
+                    </div>
+                    <div x-show="pwdError" class="text-sm" style="color:var(--accent)" x-text="pwdError"></div>
+                    <div class="flex justify-end">
+                        <button class="btn btn-primary" @click="changeMyPassword()" :disabled="pwdBusy">
+                            <span x-show="!pwdBusy">Change password</span>
+                            <span x-show="pwdBusy">Saving…</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== USERS (admin only) ========== -->
+        <section x-show="tab==='users' && user.is_admin">
+            <div class="mb-6">
+                <h1 class="display text-3xl">Users</h1>
+                <div class="text-sm" style="color:var(--ink-2)">Reset any user's password. The user will be signed out everywhere and need to sign in again.</div>
+            </div>
+
+            <div class="card overflow-hidden">
+                <table class="ledger">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Username</th><th>Display name</th><th>Role</th><th>Active</th><th>Created</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="u in users" :key="u.user_id">
+                            <tr>
+                                <td class="mono" style="color:var(--ink-2)" x-text="u.user_id"></td>
+                                <td class="mono" x-text="u.username"></td>
+                                <td class="font-semibold" x-text="u.display_name"></td>
+                                <td>
+                                    <span x-show="u.is_admin"  class="mono text-xs px-1.5 py-0.5 rounded" style="background:var(--paper-2)">admin</span>
+                                    <span x-show="!u.is_admin" class="mono text-xs px-1.5 py-0.5 rounded" style="background:var(--paper-2)">broker</span>
+                                </td>
+                                <td x-text="u.is_active ? 'Yes' : 'No'"></td>
+                                <td x-text="fmtDate(u.created_at)"></td>
+                                <td class="text-right">
+                                    <button class="btn btn-ghost text-xs" @click="openResetFor(u)">Reset password</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="users.length===0">
+                            <tr><td colspan="7" class="text-center py-12" style="color:var(--ink-2)">No users.</td></tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Reset modal -->
+            <div x-show="resetTarget" x-transition.opacity class="fixed inset-0 z-30 flex items-center justify-center" style="background:rgba(31,29,26,.4)" @click.self="resetTarget=null">
+                <div class="card w-full max-w-md p-6 m-4" @click.stop>
+                    <h2 class="display text-xl mb-1">Reset password</h2>
+                    <div class="text-sm mb-4" style="color:var(--ink-2)">
+                        For <span class="font-semibold" x-text="resetTarget && resetTarget.display_name"></span>
+                        (<span class="mono" x-text="resetTarget && resetTarget.username"></span>)
+                    </div>
+                    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">New password</label>
+                    <input type="text" class="ipt mt-1 w-full" x-model="resetForm.next" placeholder="At least 6 characters">
+                    <div x-show="resetError" class="text-sm mt-2" style="color:var(--accent)" x-text="resetError"></div>
+                    <div class="flex justify-end gap-2 mt-5">
+                        <button class="btn btn-ghost" @click="resetTarget=null">Cancel</button>
+                        <button class="btn btn-primary" @click="submitReset()" :disabled="resetBusy">
+                            <span x-show="!resetBusy">Set new password</span>
+                            <span x-show="resetBusy">Setting…</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ========== CASE DRAWER ========== -->
+    <div x-show="caseOpen" x-transition.opacity class="fixed inset-0 z-30" style="background:rgba(31,29,26,.4)" @click.self="caseOpen=false">
+        <aside class="absolute right-0 top-0 bottom-0 w-full max-w-3xl overflow-y-auto" style="background:var(--paper)">
+            <div class="px-6 py-5 border-b rule-thin flex items-center justify-between" style="background:var(--paper-2); position:sticky; top:0; z-index:1;">
+                <div>
+                    <div class="text-xs uppercase tracking-widest" style="color:var(--ink-2)">Case <span class="mono" x-text="caseDraft && caseDraft.case_id"></span></div>
+                    <h2 class="display text-2xl" x-text="caseDraft ? caseDraft.client : ''"></h2>
+                </div>
+                <button class="btn btn-ghost" @click="caseOpen=false">Close</button>
+            </div>
+
+            <div class="p-6 space-y-6" x-show="caseDraft">
+                <!-- Identity -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Client</label>
+                        <input class="ipt mt-1" x-model="caseDraft.client" :disabled="!isNew"></div>
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Date written</label>
+                        <input class="ipt mt-1" type="date" x-model="caseDraft.date_written" :disabled="!isNew"></div>
+                    <div class="col-span-2"><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Address</label>
+                        <input class="ipt mt-1" x-model="caseDraft.address" :disabled="!isNew"></div>
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Mortgage £</label>
+                        <input class="ipt mt-1" type="number" step="0.01" x-model.number="caseDraft.mortgage_amount" :disabled="!isNew"></div>
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Product</label>
+                        <select class="ipt mt-1" x-model="caseDraft.product" :disabled="!isNew">
+                            <option value="">—</option>
+                            <template x-for="p in lookups.products" :key="p.code"><option :value="p.code" x-text="p.description"></option></template>
+                        </select></div>
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Lead source</label>
+                        <select class="ipt mt-1" x-model="caseDraft.lead_source" :disabled="!isNew">
+                            <template x-for="ls in lookups.lead_sources" :key="ls.code"><option :value="ls.code" x-text="ls.code + ' — ' + ls.description"></option></template>
+                        </select></div>
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Predicted completion</label>
+                        <input class="ipt mt-1" type="date" x-model="caseDraft.predicted_date" :disabled="!isNew"></div>
+                    <div><label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Renewal date</label>
+                        <input class="ipt mt-1" type="date" x-model="caseDraft.renewal_date" :disabled="!isNew"></div>
+                </div>
+
+                <!-- New case: bare submit -->
+                <template x-if="isNew">
+                    <div class="flex justify-end gap-2">
+                        <button class="btn btn-ghost" @click="caseOpen=false">Cancel</button>
+                        <button class="btn btn-primary" @click="saveNewCase()">Create case</button>
+                    </div>
+                </template>
+
+                <!-- Existing case: fee/status editor -->
+                <template x-if="!isNew">
+                    <div>
+                        <h3 class="display text-xl rule-under mb-3">Fees &amp; statuses</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <template x-for="ft in lookups.fee_types" :key="ft.code">
+                                <div class="card p-4">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="font-semibold" x-text="ft.description"></div>
+                                        <span :class="'pill pill-' + (caseDraft[statusFieldFor(ft.code)] || 'blank')" x-text="caseDraft[statusFieldFor(ft.code)] || '—'"></span>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Value</label>
+                                            <input class="ipt mt-1" type="number" step="0.01" x-model.number="caseDraft[valueFieldFor(ft.code)]">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">Status</label>
+                                            <select class="ipt mt-1" x-model="caseEdits[ft.code+'__status']">
+                                                <option value="">— no change —</option>
+                                                <template x-for="s in lookups.statuses" :key="s.code"><option :value="s.code" x-text="s.description"></option></template>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-xs uppercase tracking-wider" style="color:var(--ink-2)">When</label>
+                                            <input class="ipt mt-1" type="date" x-model="caseEdits[ft.code+'__date']">
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 flex justify-end">
+                                        <button class="btn btn-ghost text-xs" @click="recordChange(ft.code)">Record change</button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <h3 class="display text-xl rule-under mt-8 mb-3">History</h3>
+                        <div class="card overflow-hidden">
+                            <table class="ledger">
+                                <thead><tr><th>When</th><th>Fee</th><th>From</th><th>To</th><th class="text-right">Value</th><th>By</th><th>Note</th></tr></thead>
+                                <tbody>
+                                    <template x-for="h in caseHistory" :key="h.history_id">
+                                        <tr>
+                                            <td class="mono text-xs" x-text="fmtDateTime(h.changed_at)"></td>
+                                            <td x-text="h.fee_type"></td>
+                                            <td><span :class="'pill pill-' + (h.old_status || 'blank')" x-text="h.old_status || '—'"></span></td>
+                                            <td><span :class="'pill pill-' + (h.new_status || 'blank')" x-text="h.new_status || '—'"></span></td>
+                                            <td class="text-right mono" x-text="h.value !== null ? fmtMoney(h.value) : '—'"></td>
+                                            <td x-text="h.changed_by_display_name"></td>
+                                            <td class="text-xs" style="color:var(--ink-2)" x-text="h.note || ''"></td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="caseHistory.length===0">
+                                        <tr><td colspan="7" class="text-center py-6" style="color:var(--ink-2)">No history yet.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Toast -->
+    <div x-show="toast" x-transition class="fixed bottom-4 right-4 z-40 toast">
+        <div class="card px-4 py-3 shadow-lg">
+            <span x-text="toast"></span>
+        </div>
+    </div>
+
+</div>
+</template>
+
+</div>
+
+<script>
+function app() {
+return {
+    user: null,
+    tab: 'cases',
+    loginForm: { username: '', password: '' },
+    loginError: '',
+    loginBusy: false,
+    toast: '',
+
+    lookups: { statuses:[], products:[], fee_types:[], lead_sources:[] },
+
+    // Cases
+    cases: [],
+    filters: { search:'', year:null, lead_source:'', finished:'' },
+
+    // Case drawer
+    caseOpen: false,
+    caseDraft: null,
+    caseEdits: {},      // per-fee unsaved status/date pairs
+    caseHistory: [],
+    isNew: false,
+
+    // Dashboard
+    dashYear: new Date().getFullYear(),
+    dashRows: [],
+
+    // Earnings
+    earnYear: new Date().getFullYear(),
+    earnings: [],
+
+    // Splits
+    splitsYear: new Date().getFullYear(),
+    splits: [],   // raw rows from server
+
+    // Account / password change
+    pwdForm: { current: '', next: '', confirm: '' },
+    pwdError: '',
+    pwdBusy: false,
+
+    // Users (admin)
+    users: [],
+    resetTarget: null,
+    resetForm: { next: '' },
+    resetError: '',
+    resetBusy: false,
+
+    // ----- lifecycle ---------------------------------------------------
+    async init() {
+        try {
+            const me = await this.rpc('me');
+            this.user = me.user;
+            await this.loadLookups();
+            await this.loadCases();
+        } catch (e) {
+            this.user = null;
+        }
+    },
+
+    // ----- helpers -----------------------------------------------------
+    // When hosting from GitHub Pages, set this to your Node-RED server address,
+    // e.g. 'http://192.168.1.50:1880' or 'https://tracker.yourdomain.com'.
+    // Leave empty when Node-RED is serving this file directly.
+    apiBase: window.TRACKER_API_BASE || '',
+
+    async rpc(action, params) {
+        const url = (this.apiBase || '') + '/api/rpc';
+        const r = await fetch(url, {
+            method: 'POST',
+            credentials: this.apiBase ? 'include' : 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, params: params || {} })
+        });
+        const ctype = r.headers.get('content-type') || '';
+        const data = ctype.includes('application/json') ? await r.json() : await r.text();
+        if (!r.ok) {
+            if (r.status === 401) this.user = null;
+            throw new Error((data && data.error) || ('HTTP ' + r.status));
+        }
+        return data;
+    },
+    showToast(msg) {
+        this.toast = msg;
+        setTimeout(() => { this.toast = ''; }, 2200);
+    },
+    fmtMoney(v) {
+        if (v === null || v === undefined || v === '') return '—';
+        const n = Number(v);
+        if (isNaN(n)) return '—';
+        return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n);
+    },
+    fmtDate(v) {
+        if (!v) return '—';
+        return new Date(v).toLocaleDateString('en-GB', { year:'numeric', month:'short', day:'numeric' });
+    },
+    fmtDateTime(v) {
+        if (!v) return '—';
+        return new Date(v).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' });
+    },
+    monthName(m) {
+        return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] || '';
+    },
+    statusFieldFor(code) {
+        return ({ broker_fee:'broker_status', proc_fee:'proc_status', protection:'protection_status',
+                  gi:'gi_status', solicitors:'solicitors_status', survey:'survey_status' })[code];
+    },
+    valueFieldFor(code) {
+        return ({ broker_fee:'broker_fee', proc_fee:'proc_fee', protection:'protection_fee',
+                  gi:'gi_fee', solicitors:'solicitors_fee', survey:'survey_fee' })[code];
+    },
+
+    // ----- auth --------------------------------------------------------
+    async signIn() {
+        this.loginError = ''; this.loginBusy = true;
+        try {
+            const r = await this.rpc('login', this.loginForm);
+            this.user = r.user;
+            await this.loadLookups();
+            await this.loadCases();
+        } catch (e) {
+            this.loginError = e.message === 'invalid_credentials' ? 'That username and password don’t match.' : e.message;
+        } finally {
+            this.loginBusy = false;
+        }
+    },
+    async signOut() {
+        await this.rpc('logout');
+        this.user = null;
+    },
+
+    // ----- lookups -----------------------------------------------------
+    async loadLookups() {
+        this.lookups = await this.rpc('lookups');
+    },
+
+    // ----- cases -------------------------------------------------------
+    async loadCases() {
+        const r = await this.rpc('list_cases', {
+            search:      this.filters.search      || null,
+            year:        this.filters.year        || null,
+            lead_source: this.filters.lead_source || null,
+            finished:    this.filters.finished    || null
+        });
+        this.cases = r.cases || [];
+    },
+    openNewCase() {
+        this.isNew = true;
+        this.caseDraft = {
+            client:'', date_written: new Date().toISOString().slice(0,10),
+            address:'', mortgage_amount: null, product:'', lead_source:'SG',
+            predicted_date:'', renewal_date:'',
+            broker_fee:0, proc_fee:0, protection_fee:0, gi_fee:0, solicitors_fee:0, survey_fee:0
+        };
+        this.caseEdits = {};
+        this.caseHistory = [];
+        this.caseOpen = true;
+    },
+    async saveNewCase() {
+        if (!this.caseDraft.client || !this.caseDraft.date_written) {
+            this.showToast('Client and Date Written are required'); return;
+        }
+        const r = await this.rpc('create_case', this.caseDraft);
+        this.showToast('Case created (#' + r.case_id + ')');
+        this.caseOpen = false;
+        await this.loadCases();
+    },
+    async openCase(c) {
+        this.isNew = false;
+        this.caseDraft = JSON.parse(JSON.stringify(c));
+        this.caseEdits = {};
+        this.caseHistory = [];
+        this.caseOpen = true;
+        const r = await this.rpc('get_history', { case_id: c.case_id });
+        this.caseHistory = r.history || [];
+    },
+    async recordChange(feeCode) {
+        const newStatus = this.caseEdits[feeCode + '__status'] || null;
+        const when      = this.caseEdits[feeCode + '__date']   || null;
+        const valueField = this.valueFieldFor(feeCode);
+        const newValue  = this.caseDraft[valueField];
+        if (!newStatus && newValue == null) { this.showToast('Pick a status or change the value first'); return; }
+
+        const r = await this.rpc('record_fee', { case_id: this.caseDraft.case_id,
+            fee_type:   feeCode,
+            status:     newStatus,
+            value:      typeof newValue === 'number' ? newValue : null,
+            changed_at: when ? new Date(when).toISOString() : null
+        });
+        this.caseDraft = r.case || this.caseDraft;
+        this.caseEdits[feeCode + '__status'] = '';
+        this.caseEdits[feeCode + '__date']   = '';
+        const h = await this.rpc('get_history', { case_id: this.caseDraft.case_id });
+        this.caseHistory = h.history || [];
+        // also refresh the row in the parent table
+        await this.loadCases();
+        this.showToast('Recorded.');
+    },
+
+    // ----- dashboard ---------------------------------------------------
+    async loadDashboard() {
+        const r = await this.rpc('dashboard', { year: this.dashYear });
+        this.dashRows = r.months || [];
+    },
+    get dashTotals() {
+        const t = { written:0, completed:0, paid:0 };
+        for (const m of this.dashRows) {
+            t.written   += Number(m.written_total)   || 0;
+            t.completed += Number(m.completed_total) || 0;
+            t.paid      += Number(m.paid_total)      || 0;
+        }
+        return t;
+    },
+
+    // ----- earnings ----------------------------------------------------
+    async loadEarnings() {
+        const r = await this.rpc('earnings', { year: this.earnYear });
+        this.earnings = r.earnings || [];
+    },
+    get earnTotals() {
+        const t = { broker:0, proc:0, protection:0, gi:0, solicitors:0, survey:0, total:0 };
+        for (const e of this.earnings) {
+            t.broker     += Number(e.broker_earn)     || 0;
+            t.proc       += Number(e.proc_earn)       || 0;
+            t.protection += Number(e.protection_earn) || 0;
+            t.gi         += Number(e.gi_earn)         || 0;
+            t.solicitors += Number(e.solicitors_earn) || 0;
+            t.survey     += Number(e.survey_earn)     || 0;
+            t.total      += Number(e.total_earn)      || 0;
+        }
+        return t;
+    },
+
+    // ----- splits ------------------------------------------------------
+    async loadSplits() {
+        const r = await this.rpc('get_splits');
+        this.splits = r.splits || [];
+    },
+    splitFor(month) {
+        return this.splits.find(s => s.year === this.splitsYear && s.month === month) ||
+            { year: this.splitsYear, month, sg_mortgage_pct:0, wm_mortgage_pct:0, sg_protection_pct:0, wm_protection_pct:0, note:'' };
+    },
+    async saveSplit(month, field, raw) {
+        const cur = { ...this.splitFor(month) };
+        cur.year = this.splitsYear;
+        cur.month = month;
+        if (field === 'note') cur.note = raw;
+        else cur[field] = parseFloat(raw) || 0;
+        const r = await this.rpc('set_split', cur);
+        // replace or add in local cache
+        const i = this.splits.findIndex(s => s.year === this.splitsYear && s.month === month);
+        if (i >= 0) this.splits[i] = { ...this.splits[i], ...r.split };
+        else this.splits.push(r.split);
+        this.showToast(this.monthName(month) + ' ' + this.splitsYear + ' saved');
+    },
+    async seedYear() {
+        for (let m = 1; m <= 12; m++) {
+            const has = this.splits.some(s => s.year === this.splitsYear && s.month === m);
+            if (!has) {
+                await this.rpc('set_split', {
+                    year: this.splitsYear, month: m,
+                    sg_mortgage_pct: 100, wm_mortgage_pct: 50,
+                    sg_protection_pct: 100, wm_protection_pct: 50
+                });
+            }
+        }
+        await this.loadSplits();
+        this.showToast('Year ' + this.splitsYear + ' seeded');
+    },
+
+    // ----- account: change own password -------------------------------
+    async changeMyPassword() {
+        this.pwdError = '';
+        const f = this.pwdForm;
+        if (!f.current || !f.next) { this.pwdError = 'Fill in your current and new password.'; return; }
+        if (f.next.length < 6)     { this.pwdError = 'New password must be at least 6 characters.'; return; }
+        if (f.next !== f.confirm)  { this.pwdError = 'New password and confirmation don’t match.'; return; }
+        this.pwdBusy = true;
+        try {
+            await this.rpc('change_password', { current_password: f.current, new_password: f.next });
+            this.pwdForm = { current: '', next: '', confirm: '' };
+            this.showToast('Password changed');
+        } catch (e) {
+            this.pwdError = e.message === 'current_password_incorrect'
+                ? 'That current password isn’t right.'
+                : (e.message || 'Could not change password.');
+        } finally {
+            this.pwdBusy = false;
+        }
+    },
+
+    // ----- users (admin) ----------------------------------------------
+    async loadUsers() {
+        if (!this.user || !this.user.is_admin) return;
+        try {
+            const r = await this.rpc('list_users');
+            this.users = r.users || [];
+        } catch (e) {
+            this.showToast(e.message);
+        }
+    },
+    openResetFor(u) {
+        this.resetTarget = u;
+        this.resetForm.next = '';
+        this.resetError = '';
+    },
+    async submitReset() {
+        if (!this.resetTarget) return;
+        const next = this.resetForm.next || '';
+        if (next.length < 6) { this.resetError = 'Password must be at least 6 characters.'; return; }
+        this.resetBusy = true; this.resetError = '';
+        try {
+            await this.rpc('admin_reset_password', { user_id: this.resetTarget.user_id, new_password: next });
+            this.showToast('Password reset for ' + this.resetTarget.display_name);
+            this.resetTarget = null;
+            this.resetForm.next = '';
+        } catch (e) {
+            this.resetError = e.message || 'Could not reset password.';
+        } finally {
+            this.resetBusy = false;
+        }
+    }
+};
+}
+</script>
+</body>
+</html>
